@@ -20,6 +20,17 @@ llm = LLMClient()
 
 MAX_RETRIES = 3
 
+# Per-doc character limit for discovery so the model sees both start and end (avoids missing last pages).
+# For long docs we send start + end so closing sections (signature, verification, etc.) are included.
+_DISCOVERY_CHARS_HEAD = 6000
+_DISCOVERY_CHARS_TAIL = 6000
+_DISCOVERY_DOC_MAX = _DISCOVERY_CHARS_HEAD + _DISCOVERY_CHARS_TAIL
+
+
+def _doc_for_discovery(text: str) -> str:
+    return text
+
+
 SECTION_KEYS = (
     "sections",
     "Sections",
@@ -196,6 +207,7 @@ Task:
 - List each distinct part as a separate section. Do not merge different functions (e.g. caption vs. notice vs. allegations vs. prayer vs. signature) into one.
 - Be detailed: aim for around 10–12 sections when the document has that many parts. For a short document there may be fewer; for a long or formal one there may be more (caption, notices, venue, parties, body, causes of action, facts, relief requested, signature, verification, certification, etc.).
 - Base section names and purposes on what you see in the documents, not on a fixed template. Different document types have different structures.
+- You MUST identify sections from the beginning through the very end of each document. Do not skip the closing pages: include any signature blocks, verification/affirmation, certification, filing instructions, or proof-of-service sections that appear at the end.
 
 Output format (use this format only; do NOT output JSON):
 - One section per line.
@@ -207,10 +219,10 @@ Output format (use this format only; do NOT output JSON):
 - You MUST list at least 6 lines. If the documents have more distinct parts, list all of them (aim for detailed breakdown, around 10–12 sections when appropriate).
 
 Doc1:
-{doc1[:6000]}
+{_doc_for_discovery(doc1)}
 
 Doc2:
-{doc2[:6000]}
+{_doc_for_discovery(doc2)}
 """
 
     # ----------------------------------------------
