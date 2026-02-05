@@ -2,6 +2,9 @@ import json
 from docx import Document
 from docx.shared import Length
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.text.paragraph import Paragraph
+from docx.table import Table
+from docx.enum.table import WD_TABLE_ALIGNMENT
 
 # ==========================================
 #        HELPER FUNCTIONS
@@ -142,19 +145,89 @@ def get_paragraph_formatting(doc, paragraph, index):
         }
     }
 
+
+def get_table_data(doc, table, table_index, block_index):
+    """
+    Extract content and basic layout for a single table.
+
+    Tables can appear anywhere in the document body. This returns cell text in
+    row/column order and optional table-level properties (style, alignment)
+    for display or export.
+
+    Args:
+        doc: python-docx Document (for consistency with paragraph API).
+        table: docx Table object.
+        table_index: Zero-based index of this table among all tables in the doc.
+        block_index: Zero-based position in document order (paragraphs + tables).
+
+    Returns:
+        Dict with type "table", block_index, table_index, row_count, column_count,
+        rows (list of lists of cell text), and optional table formatting summary.
+    """
+    rows_data = []
+    for row in table.rows:
+        cells_text = [cell.text.strip() if cell.text else "" for cell in row.cells]
+        rows_data.append(cells_text)
+    row_count = len(rows_data)
+    column_count = max(len(r) for r in rows_data) if rows_data else 0
+
+    # Optional: table-level formatting (python-docx exposes style and alignment)
+    style_name = getattr(table.style, "name", None) if table.style else None
+    alignment = getattr(table, "alignment", None)
+    table_alignments = {
+        WD_TABLE_ALIGNMENT.LEFT: "Left",
+        WD_TABLE_ALIGNMENT.CENTER: "Center",
+        WD_TABLE_ALIGNMENT.RIGHT: "Right",
+    }
+    align_str = table_alignments.get(alignment, "Left (Default)") if alignment is not None else "Left (Default)"
+
+    return {
+        "type": "table",
+        "block_index": block_index,
+        "table_index": table_index,
+        "row_count": row_count,
+        "column_count": column_count,
+        "rows": rows_data,
+        "Formatting of selected text": {
+            "Table": {
+                "TABLE STYLE": style_name or "(Default)",
+                "ALIGNMENT": align_str,
+            }
+        },
+    }
+
+
 def extract_formatting_from_file(file_path_or_stream):
     """
-    Extract formatting data from a .docx file.
-    Accepts a file path (str/pathlib.Path) or a file-like object (e.g. BytesIO).
-    Returns a list of paragraph formatting dicts, or raises on error.
+    Extract formatting and content from a .docx file in document order.
+
+    Processes both paragraphs and tables: uses doc.iter_inner_content() so that
+    blocks appear in the order they appear in the document. Empty paragraphs
+    are skipped. Accepts a file path (str/pathlib.Path) or a file-like object
+    (e.g. BytesIO).
+
+    Returns:
+        List of dicts, each either type "paragraph" (with text and formatting)
+        or type "table" (with rows/cells and table formatting). Each item has
+        block_index for document order.
     """
     doc = Document(file_path_or_stream)
     full_doc_data = []
-    for i, para in enumerate(doc.paragraphs):
-        if not para.text.strip():
-            continue
-        data = get_paragraph_formatting(doc, para, i)
-        full_doc_data.append(data)
+    paragraph_index = 0
+    table_index = 0
+    for block_index, block in enumerate(doc.iter_inner_content()):
+        if isinstance(block, Paragraph):
+            if not block.text.strip():
+                continue
+            data = get_paragraph_formatting(doc, block, paragraph_index)
+            data["type"] = "paragraph"
+            data["block_index"] = block_index
+            full_doc_data.append(data)
+            paragraph_index += 1
+        elif isinstance(block, Table):
+            data = get_table_data(doc, block, table_index, block_index)
+            full_doc_data.append(data)
+            table_index += 1
     return full_doc_data
 
 

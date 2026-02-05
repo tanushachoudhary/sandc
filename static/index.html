@@ -161,6 +161,20 @@
       white-space: pre-wrap;
       word-break: break-word;
     }
+    .table-data-section { margin-bottom: 1rem; }
+    .table-wrapper { overflow-x: auto; margin-top: 0.4rem; }
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    .data-table td, .data-table th {
+      border: 1px solid var(--border);
+      padding: 0.4rem 0.6rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    .data-table tbody tr:nth-child(even) { background: rgba(0,0,0,0.03); }
     .loading {
       text-align: center;
       color: var(--text-muted);
@@ -257,27 +271,60 @@
 
     function renderResults(filename, data) {
       resultFilename.textContent = filename;
-      resultCount.textContent = data.length + " paragraph(s)";
+      const paraCount = data.filter((item) => item.type === "paragraph").length;
+      const tableCount = data.filter((item) => item.type === "table").length;
+      const countParts = [];
+      if (paraCount) countParts.push(paraCount + " paragraph(s)");
+      if (tableCount) countParts.push(tableCount + " table(s)");
+      resultCount.textContent = countParts.length ? countParts.join(", ") : "0 blocks";
       resultsList.innerHTML = "";
-      data.forEach((item, i) => {
+      data.forEach((item) => {
         const card = document.createElement("div");
         card.className = "card";
-        const fmt = item["Formatting of selected text"] || {};
-        const preview = (item.text_preview || "").replace(/\n/g, " ");
-        card.innerHTML = `
-          <div class="card-header" role="button" aria-expanded="false">
-            <span class="card-index">#${item.paragraph_index}</span>
-            <span class="card-preview">${escapeHtml(preview)}</span>
-            <span class="card-toggle">Show formatting</span>
-          </div>
-          <div class="card-body hidden">
-            <div class="card-body-inner">
-              ${renderSection("Font", fmt.Font)}
-              ${renderSection("Paragraph", fmt.Paragraph)}
-              ${renderSection("Section", fmt.Section)}
+        const blockIndex = item.block_index !== undefined ? item.block_index : item.paragraph_index;
+        if (item.type === "table") {
+          const fmt = item["Formatting of selected text"] || {};
+          const preview = "Table: " + (item.row_count || 0) + " row(s), " + (item.column_count || 0) + " column(s)";
+          card.innerHTML = `
+            <div class="card-header" role="button" aria-expanded="false">
+              <span class="card-index">#${blockIndex}</span>
+              <span class="card-preview">${escapeHtml(preview)}</span>
+              <span class="card-toggle">Show table & formatting</span>
             </div>
-          </div>
-        `;
+            <div class="card-body hidden">
+              <div class="card-body-inner">
+                <section class="table-data-section">
+                  <h4>Table content</h4>
+                  <div class="table-wrapper">
+                    <table class="data-table">
+                      <tbody>${(item.rows || []).map((row) =>
+                        "<tr>" + row.map((cell) => "<td>" + escapeHtml(cell) + "</td>").join("") + "</tr>"
+                      ).join("")}</tbody>
+                    </table>
+                  </div>
+                </section>
+                ${renderSection("Table", fmt.Table)}
+              </div>
+            </div>
+          `;
+        } else {
+          const fmt = item["Formatting of selected text"] || {};
+          const preview = (item.text_preview || "").replace(/\n/g, " ");
+          card.innerHTML = `
+            <div class="card-header" role="button" aria-expanded="false">
+              <span class="card-index">#${blockIndex}</span>
+              <span class="card-preview">${escapeHtml(preview)}</span>
+              <span class="card-toggle">Show formatting</span>
+            </div>
+            <div class="card-body hidden">
+              <div class="card-body-inner">
+                ${renderSection("Font", fmt.Font)}
+                ${renderSection("Paragraph", fmt.Paragraph)}
+                ${renderSection("Section", fmt.Section)}
+              </div>
+            </div>
+          `;
+        }
         const header = card.querySelector(".card-header");
         const body = card.querySelector(".card-body");
         const toggle = card.querySelector(".card-toggle");
@@ -285,7 +332,7 @@
           const open = !body.classList.contains("hidden");
           body.classList.toggle("hidden", open);
           header.setAttribute("aria-expanded", !open);
-          toggle.textContent = open ? "Show formatting" : "Hide formatting";
+          toggle.textContent = open ? (item.type === "table" ? "Show table & formatting" : "Show formatting") : (item.type === "table" ? "Hide table & formatting" : "Hide formatting");
         });
         resultsList.appendChild(card);
       });
